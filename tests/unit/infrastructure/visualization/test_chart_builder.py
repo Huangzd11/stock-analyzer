@@ -50,3 +50,12 @@ def test_chart_builder_with_forecast(tmp_path: Path) -> None:
 def test_chart_builder_rejects_empty_quotes(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="为空"):
         ChartBuilder().build_candlestick([], tmp_path / "empty.html")
+
+
+def test_chart_builder_title_shows_last_trade_date(tmp_path: Path) -> None:
+    quotes = _make_quotes(25)
+    output = tmp_path / "range.html"
+    ChartBuilder().build_candlestick(quotes, output)
+    content = output.read_text(encoding="utf-8")
+    last = quotes[-1].trade_date.isoformat()
+    assert last in content

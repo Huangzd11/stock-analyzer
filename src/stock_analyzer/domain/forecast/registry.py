@@ -36,3 +36,12 @@ def create_baseline_registry() -> ForecastRegistry:
     registry.register(MovingAverageForecast())
     registry.register(LinearTrendForecast())
     return registry
+
+
+def create_full_registry(settings: object | None = None) -> ForecastRegistry:
+    """创建基线 + 深度学习策略注册表（需已安装 .[ml]）。"""
+    registry = create_baseline_registry()
+    from stock_analyzer.domain.forecast.deep import register_deep_strategies
+
+    register_deep_strategies(registry, settings)
+    return registry

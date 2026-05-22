@@ -19,6 +19,7 @@ dependencies = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
     "numpy>=1.26",
+    "PySocks>=1.7",
 ]
 
 [project.optional-dependencies]
@@ -42,6 +43,9 @@ stock-analyzer = "stock_analyzer.interface.cli.main:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+stock_analyzer = ["interface/web/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -76,5 +80,7 @@ module = [
     "plotly.*",
     "fastapi",
     "fastapi.*",
+    "torch",
+    "torch.*",
 ]
 ignore_missing_imports = true

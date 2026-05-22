@@ -6,13 +6,18 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import typer
+from requests import RequestException
 
 from stock_analyzer import __version__
+from stock_analyzer.domain.forecast.deep.availability import MlDependencyError
+from stock_analyzer.infrastructure.sources.akshare_source import QuoteSourceError
 from stock_analyzer.interface.deps import (
+    build_forecast_registry,
     create_analysis_service,
     create_crawl_service,
     create_predict_service,
     create_visualize_service,
+    get_settings,
 )
 
 app = typer.Typer(
@@ -81,7 +86,16 @@ def crawl(
             )
         _echo_json({"results": results})
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    except (QuoteSourceError, RequestException, OSError) as exc:
+        typer.secho(f"爬取失败: {exc}", fg=typer.colors.RED, err=True)
+        typer.secho(
+            "提示: 检查网络连接，或在 .env 中配置 HTTP_PROXY / HTTPS_PROXY",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
 
 
 @app.command("analyze")
@@ -109,15 +123,27 @@ def predict(
     days: int = typer.Option(30, "--days", min=1, help="预测天数"),
     start: str | None = typer.Option(None, "--start", help="历史数据开始日期"),
     end: str | None = typer.Option(None, "--end", help="历史数据结束日期"),
+    enable_ml: bool = typer.Option(
+        False,
+        "--enable-ml",
+        help="启用深度学习策略（lstm，需 pip install .[ml]）",
+    ),
 ) -> None:
     """基于历史行情进行走势预测。"""
     end_date = _parse_date(end) if end else date.today()
     start_date = _parse_date(start) if start else end_date - timedelta(days=120)
 
     async def _run() -> None:
-        service = await create_predict_service()
+        settings = get_settings()
+        if enable_ml:
+            settings = settings.model_copy(update={"enable_ml_strategies": True})
         try:
+            registry = build_forecast_registry(settings)
+            service = await create_predict_service(settings, registry)
             result = await service.predict(symbol, start_date, end_date, strategy, days)
+        except MlDependencyError as exc:
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from exc
         except KeyError as exc:
             typer.secho(str(exc), fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1) from exc
@@ -151,6 +177,8 @@ def chart(
     start_date = _parse_date(start) if start else end_date - timedelta(days=120)
 
     async def _run() -> None:
+        crawl_svc = await create_crawl_service()
+        await crawl_svc.crawl_daily(symbol, start_date, end_date)
         forecast = None
         if strategy:
             predict_svc = await create_predict_service()
@@ -162,6 +190,7 @@ def chart(
             end_date,
             output,
             forecast=forecast,
+            refresh=False,
         )
         _echo_json({"output": str(path.resolve())})
 

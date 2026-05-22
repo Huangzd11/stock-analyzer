@@ -6,7 +6,11 @@ from stock_analyzer.application.predict_service import PredictService
 from stock_analyzer.application.visualize_service import VisualizeService
 from stock_analyzer.config.database import sqlite_path_from_database_url
 from stock_analyzer.config.settings import Settings
-from stock_analyzer.domain.forecast.registry import ForecastRegistry, create_baseline_registry
+from stock_analyzer.domain.forecast.registry import (
+    ForecastRegistry,
+    create_baseline_registry,
+    create_full_registry,
+)
 from stock_analyzer.infrastructure.concurrency.token_bucket import TokenBucket
 from stock_analyzer.infrastructure.persistence.sqlite_repository import SqliteQuoteRepository
 from stock_analyzer.infrastructure.sources.akshare_source import AkShareSource
@@ -33,7 +37,12 @@ async def create_crawl_service(settings: Settings | None = None) -> CrawlService
     repo = build_repository(cfg)
     await init_repository(repo)
     limiter = TokenBucket(rate=cfg.crawl_max_qps, capacity=cfg.crawl_burst)
-    return CrawlService(AkShareSource(), repo, limiter)
+    source = AkShareSource(
+        request_timeout=cfg.crawl_request_timeout,
+        http_proxy=cfg.http_proxy,
+        https_proxy=cfg.https_proxy,
+    )
+    return CrawlService(source, repo, limiter)
 
 
 async def create_analysis_service(settings: Settings | None = None) -> AnalysisService:
@@ -42,16 +51,40 @@ async def create_analysis_service(settings: Settings | None = None) -> AnalysisS
     return AnalysisService(repo)
 
 
+def build_forecast_registry(settings: Settings | None = None) -> ForecastRegistry:
+    """按配置构建预测策略注册表。"""
+    cfg = settings or get_settings()
+    if cfg.enable_ml_strategies:
+        return create_full_registry(cfg)
+    return create_baseline_registry()
+
+
 async def create_predict_service(
     settings: Settings | None = None,
     registry: ForecastRegistry | None = None,
 ) -> PredictService:
-    repo = build_repository(settings)
+    cfg = settings or get_settings()
+    repo = build_repository(cfg)
     await init_repository(repo)
-    return PredictService(repo, registry or create_baseline_registry())
+    return PredictService(repo, registry or build_forecast_registry(cfg))
 
 
 async def create_visualize_service(settings: Settings | None = None) -> VisualizeService:
     repo = build_repository(settings)
     await init_repository(repo)
     return VisualizeService(repo, ChartBuilder())
+
+
+async def get_analysis_service() -> AnalysisService:
+    """FastAPI 依赖：技术分析服务。"""
+    return await create_analysis_service()
+
+
+async def get_predict_service() -> PredictService:
+    """FastAPI 依赖：预测服务。"""
+    return await create_predict_service()
+
+
+async def get_visualize_service() -> VisualizeService:
+    """FastAPI 依赖：可视化服务。"""
+    return await create_visualize_service()

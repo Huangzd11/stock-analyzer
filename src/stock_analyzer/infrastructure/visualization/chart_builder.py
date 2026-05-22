@@ -28,6 +28,8 @@ class ChartBuilder:
         dates = [q.trade_date.isoformat() for q in ordered]
         closes = [float(q.close) for q in ordered]
         ma_values = calc_ma(closes, ma_period)
+        ma_dates = [d for d, v in zip(dates, ma_values, strict=True) if v is not None]
+        ma_y = [v for v in ma_values if v is not None]
 
         fig = make_subplots(
             rows=2,
@@ -49,17 +51,20 @@ class ChartBuilder:
             row=1,
             col=1,
         )
-        fig.add_trace(
-            go.Scatter(
-                x=dates,
-                y=ma_values,
-                mode="lines",
-                name=f"MA{ma_period}",
-                line={"color": "orange"},
-            ),
-            row=1,
-            col=1,
-        )
+        if ma_dates:
+            fig.add_trace(
+                go.Scatter(
+                    x=ma_dates,
+                    y=ma_y,
+                    mode="lines",
+                    name=f"MA{ma_period}",
+                    line={"color": "orange", "width": 1.5},
+                    connectgaps=False,
+                ),
+                row=1,
+                col=1,
+            )
+        forecast_dates: list[str] = []
         if forecast is not None:
             forecast_dates = [p.date.isoformat() for p in forecast.points]
             forecast_values = [float(p.value) for p in forecast.points]
@@ -69,7 +74,8 @@ class ChartBuilder:
                     y=forecast_values,
                     mode="lines+markers",
                     name=f"预测({forecast.strategy})",
-                    line={"color": "purple", "dash": "dot"},
+                    line={"color": "purple", "dash": "dot", "width": 2},
+                    connectgaps=False,
                 ),
                 row=1,
                 col=1,
@@ -84,10 +90,25 @@ class ChartBuilder:
             row=2,
             col=1,
         )
+        last_hist = dates[-1]
+        x_end_price = forecast_dates[-1] if forecast_dates else last_hist
         fig.update_layout(
-            title=f"{ordered[0].symbol} 行情图",
+            title=f"{ordered[0].symbol} 行情图（{dates[0]} ~ {last_hist}）",
             xaxis_rangeslider_visible=False,
             template="plotly_white",
+        )
+        # 价格区可含预测；成交量仅展示历史 K 线区间，避免拉到未来空白
+        fig.update_xaxes(range=[dates[0], x_end_price], row=1, col=1)
+        fig.update_xaxes(range=[dates[0], last_hist], row=2, col=1)
+        fig.update_xaxes(
+            rangebreaks=[{"pattern": "day of week", "bounds": ["sat", "mon"]}],
+            row=1,
+            col=1,
+        )
+        fig.update_xaxes(
+            rangebreaks=[{"pattern": "day of week", "bounds": ["sat", "mon"]}],
+            row=2,
+            col=1,
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         fig.write_html(str(output_path))

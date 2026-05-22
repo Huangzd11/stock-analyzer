@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock Analyzer</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 18 L8 10 L12 14 L16 6 L20 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <h1>Stock Analyzer</h1>
+          <p class="muted">A 股研究控制台</p>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="主导航">
+        <button class="nav-btn active" data-panel="realtime">
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          实时爬取
+        </button>
+        <button class="nav-btn" data-panel="analyze">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          技术分析
+        </button>
+        <button class="nav-btn" data-panel="predict">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M3 17l6-6 4 4 8-10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 5h7v7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          走势预测
+        </button>
+        <button class="nav-btn" data-panel="chart">
+          <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M7 14l3-3 3 2 4-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          图表可视化
+        </button>
+      </nav>
+
+      <div class="status-card" id="sidebar-status">
+        <span class="status-dot" id="rt-dot"></span>
+        <div class="status-text">
+          <span class="status-label">实时调度</span>
+          <span id="rt-status-text" class="status-value">未启动</span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="content-wrap">
+      <header class="topbar">
+        <button type="button" class="icon-btn menu-toggle" id="btn-menu" aria-label="打开菜单">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <div class="topbar-title">
+          <h2 id="page-title">实时爬取</h2>
+          <p class="muted" id="page-desc">管理自选股与后台增量爬取</p>
+        </div>
+        <div class="topbar-actions">
+          <a class="link-btn" href="/docs" target="_blank" rel="noopener">API 文档</a>
+        </div>
+      </header>
+
+      <main class="main">
+        <!-- 全局：股票 + 日期区间 -->
+        <section class="toolbar card" aria-label="查询条件">
+          <div class="toolbar-grid">
+            <div class="field">
+              <label for="global-symbol">股票代码</label>
+              <input id="global-symbol" type="text" inputmode="numeric" maxlength="6" placeholder="600519" value="600519" />
+            </div>
+            <div class="field">
+              <label for="global-start">开始日期</label>
+              <input id="global-start" type="date" />
+            </div>
+            <div class="field">
+              <label for="global-end">结束日期</label>
+              <input id="global-end" type="date" />
+            </div>
+            <div class="field field-action">
+              <label class="sr-only">同步</label>
+              <button type="button" class="btn ghost" id="btn-sync-symbol" title="将代码同步到各面板">同步到各页</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="panel-realtime" class="panel active">
+          <div class="stats-row" id="rt-stats">
+            <div class="stat-card">
+              <span class="stat-label">自选股</span>
+              <span class="stat-value" id="stat-watchlist">0</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">调度状态</span>
+              <span class="stat-value" id="stat-running">停止</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">上次成功</span>
+              <span class="stat-value" id="stat-success">—</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">上次失败</span>
+              <span class="stat-value" id="stat-error">—</span>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-head">
+                <h3>自选股</h3>
+                <span class="badge" id="watchlist-count">0 只</span>
+              </div>
+              <div class="row">
+                <input id="symbol-input" placeholder="6 位代码" maxlength="6" inputmode="numeric" />
+                <button class="btn primary" id="btn-add-symbol">添加</button>
+              </div>
+              <ul id="watchlist" class="tag-list empty-hint" data-empty="暂无自选股，请先添加"></ul>
+            </div>
+            <div class="card">
+              <div class="card-head"><h3>调度控制</h3></div>
+              <div class="field">
+                <label for="interval-input">爬取间隔（秒）</label>
+                <input type="number" id="interval-input" value="60" min="10" max="3600" />
+              </div>
+              <div class="btn-group">
+                <button class="btn success" id="btn-start-rt">启动实时</button>
+                <button class="btn danger" id="btn-stop-rt">停止</button>
+                <button class="btn" id="btn-run-once">立即爬取</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card mt">
+            <div class="card-head">
+              <h3>执行日志</h3>
+              <button type="button" class="btn ghost sm" id="btn-clear-log">清空</button>
+            </div>
+            <div id="rt-log" class="log-panel">等待操作…</div>
+          </div>
+        </section>
+
+        <section id="panel-analyze" class="panel">
+          <div class="card">
+            <div class="card-head">
+              <h3>指标概览</h3>
+              <button class="btn primary" id="btn-analyze">运行分析</button>
+            </div>
+            <div id="analyze-metrics" class="metrics-grid empty-hint" data-empty="点击「运行分析」查看 MA / MACD / RSI"></div>
+            <details class="json-details">
+              <summary>原始 JSON</summary>
+              <pre id="analyze-result" class="json-out">—</pre>
+            </details>
+          </div>
+        </section>
+
+        <section id="panel-predict" class="panel">
+          <div class="card">
+            <div class="card-head"><h3>预测参数</h3></div>
+            <div class="form-grid">
+              <div class="field">
+                <label for="predict-strategy">策略</label>
+                <select id="predict-strategy"></select>
+              </div>
+              <div class="field">
+                <label for="predict-days">预测天数</label>
+                <input type="number" id="predict-days" value="30" min="1" max="365" />
+              </div>
+              <div class="field field-action">
+                <label class="sr-only">预测</label>
+                <button class="btn primary block" id="btn-predict">开始预测</button>
+              </div>
+            </div>
+          </div>
+          <div class="card mt">
+            <div class="card-head">
+              <h3>预测结果</h3>
+              <span class="badge muted" id="predict-meta">—</span>
+            </div>
+            <div id="predict-chart" class="predict-chart" aria-label="预测走势图表"></div>
+            <div class="table-wrap">
+              <table class="data-table" id="predict-table">
+                <thead>
+                  <tr><th>日期</th><th>预测价</th><th>下界</th><th>上界</th></tr>
+                </thead>
+                <tbody id="predict-tbody">
+                  <tr class="placeholder-row"><td colspan="4">暂无数据</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <details class="json-details">
+              <summary>原始 JSON</summary>
+              <pre id="predict-result" class="json-out">—</pre>
+            </details>
+          </div>
+        </section>
+
+        <section id="panel-chart" class="panel">
+          <div class="card">
+            <div class="card-head">
+              <h3>图表选项</h3>
+              <div class="row compact">
+                <select id="chart-strategy" class="select-sm">
+                  <option value="">不叠加预测</option>
+                </select>
+                <button class="btn primary" id="btn-chart">生成图表</button>
+                <button class="btn ghost" id="btn-chart-full" title="全屏">⛶</button>
+              </div>
+            </div>
+            <div id="chart-loading" class="chart-loading hidden" aria-live="polite">
+              <span class="spinner"></span> 正在生成图表…
+            </div>
+            <div class="chart-container" id="chart-container">
+              <iframe id="chart-frame" class="chart-frame" title="行情图表"></iframe>
+              <div class="chart-placeholder" id="chart-placeholder">
+                <svg viewBox="0 0 24 24" fill="none" width="48" height="48"><rect x="3" y="4" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 14l3-3 3 2 4-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                <p>选择策略后点击「生成图表」</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer muted">
+        仅供学习研究，不构成投资建议 · <span id="footer-time"></span>
+      </footer>
+    </div>
+  </div>
+
+  <div id="toast-root" class="toast-root" aria-live="polite"></div>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

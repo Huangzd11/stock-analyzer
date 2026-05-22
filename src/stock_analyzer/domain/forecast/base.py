@@ -27,6 +27,16 @@ class ForecastPoint(BaseModel):
     upper: Decimal | None = None
 
 
+class ForecastMetadata(BaseModel):
+    """深度学习模型元数据（阶段 B）。"""
+
+    model_version: str
+    training_cutoff: date
+    mae: float | None = None
+    rmse: float | None = None
+    explainability: str = "low"
+
+
 class ForecastResult(BaseModel):
     """预测结果。"""
 
@@ -35,6 +45,7 @@ class ForecastResult(BaseModel):
     horizon_days: int
     points: list[ForecastPoint]
     trend: TrendDirection
+    metadata: ForecastMetadata | None = None
 
 
 @runtime_checkable
