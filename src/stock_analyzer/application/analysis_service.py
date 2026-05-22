@@ -78,6 +78,7 @@ def _compute_summary(quotes: list[Quote], closes: list[float]) -> dict[str, floa
         "volatility_30d": None,
         "max_drawdown_90d": None,
     }
+    summary["last_close"] = float(closes[-1])
     if len(closes) >= 2:
         returns = np.diff(closes) / np.array(closes[:-1])
         if len(returns) >= 30:

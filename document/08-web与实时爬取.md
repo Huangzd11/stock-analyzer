@@ -5,6 +5,7 @@
 | 能力 | 说明 |
 |------|------|
 | 实时爬取 | 后台 `RealtimeScheduler` 按间隔对自选股做增量日 K 爬取（默认回溯 7 天） |
+| 智能加自选 | 对候选股做技术+预测综合评分，自动加入走势较好的标的 |
 | 分析 / 预测 | REST API 与 Web 面板调用既有 `AnalysisService`、`PredictService` |
 | Web 界面 | 深色仪表盘：`/` 入口，静态资源 `/static/*` |
 
@@ -21,12 +22,16 @@ uvicorn stock_analyzer.interface.api.app:app --reload --host 0.0.0.0 --port 8000
 | 变量 | 默认 | 说明 |
 |------|------|------|
 | `WATCHLIST_PATH` | `./data/watchlist.json` | 自选股 JSON |
+| `WATCHLIST_AUTO_CANDIDATES` | 8 只蓝筹示例代码 | 智能添加候选池（逗号分隔） |
+| `WATCHLIST_AUTO_MAX_ADD` | `5` | 单次最多添加数量 |
+| `WATCHLIST_AUTO_MIN_SCORE` | `55` | 最低综合评分（0–100） |
 | `REALTIME_INTERVAL_SECONDS` | `60` | 默认调度间隔 |
 | `REALTIME_INCREMENTAL_DAYS` | `7` | 增量爬取天数 |
 
 ## 主要 API
 
 - `GET/PUT/POST/DELETE /api/v1/watchlist` — 自选股
+- `POST /api/v1/watchlist/auto-add` — 智能添加：自动拉取候选股行情，按评分加入前 N 只（默认 5）
 - `POST /api/v1/realtime/start|stop|run-once` — 调度控制
 - `GET /api/v1/realtime/status` — 状态
 - `WS /api/v1/ws/realtime` — 每 2 秒推送状态

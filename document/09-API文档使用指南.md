@@ -238,6 +238,7 @@ flowchart LR
 | `POST` | `/api/v1/crawl` | 批量爬取入库 |
 | `POST` | `/api/v1/chart` | 生成 HTML 图表 |
 | `GET/PUT/POST/DELETE` | `/api/v1/watchlist` | 自选股管理 |
+| `POST` | `/api/v1/watchlist/auto-add` | 自动拉取行情并按评分添加优质股（默认 5 只，无需提前入库） |
 | `GET/POST` | `/api/v1/realtime/*` | 实时爬取调度 |
 | `WS` | `/api/v1/ws/realtime` | 每 2 秒推送实时状态 |
 

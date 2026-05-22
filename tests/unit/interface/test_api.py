@@ -5,19 +5,40 @@ from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 
 from stock_analyzer.application.analysis_service import AnalysisService
+from stock_analyzer.application.crawl_service import CrawlService
+from stock_analyzer.application.predict_service import PredictService
+from stock_analyzer.application.watchlist_auto_service import WatchlistAutoService
+from stock_analyzer.application.watchlist_store import WatchlistStore
 from stock_analyzer.config.settings import Settings
-from stock_analyzer.domain.models import Quote
+from stock_analyzer.domain.forecast.registry import create_baseline_registry
+from stock_analyzer.domain.models import Market, Quote, Stock
+from stock_analyzer.infrastructure.concurrency import TokenBucket
 from stock_analyzer.infrastructure.persistence import SqliteQuoteRepository
 from stock_analyzer.interface.api.app import create_app
 from stock_analyzer.interface.deps import get_analysis_service
+from stock_analyzer.ports.quote_source import IQuoteSource
+
+
+class _MockQuoteSource:
+    def __init__(self, quotes: list[Quote]) -> None:
+        self._quotes = quotes
+
+    async def fetch_daily(self, symbol: str, start: date, end: date) -> list[Quote]:
+        return [q for q in self._quotes if start <= q.trade_date <= end]
+
+    async def fetch_stock_info(self, symbol: str) -> Stock:
+        return Stock(symbol=symbol, name="测试", market=Market.SH)
 
 
 def _make_quotes(symbol: str, days: int) -> list[Quote]:
-    base = date(2024, 1, 1)
+    end = date.today()
+    base = end - timedelta(days=days - 1)
     quotes: list[Quote] = []
     for i in range(days):
         price = Decimal(str(100 + i * 0.5))
@@ -41,6 +62,7 @@ def api_client(tmp_path: Path) -> TestClient:
     settings = Settings(
         database_url=f"sqlite+aiosqlite:///{db_path.as_posix()}",
         watchlist_path=str(tmp_path / "watchlist.json"),
+        enable_ml_strategies=False,
     )
     repo = SqliteQuoteRepository(db_path)
 
@@ -56,15 +78,18 @@ def api_client(tmp_path: Path) -> TestClient:
         return analysis
 
     application.dependency_overrides[get_analysis_service] = _override
+    application.state.test_repo = repo
     with TestClient(application) as client:
         yield client
     application.dependency_overrides.clear()
 
 
 def test_api_analysis_200(api_client: TestClient) -> None:
+    end = date.today()
+    start = end - timedelta(days=60)
     response = api_client.get(
         "/api/v1/analysis/600519",
-        params={"start": "2024-01-01", "end": "2024-03-01"},
+        params={"start": start.isoformat(), "end": end.isoformat()},
     )
     assert response.status_code == 200
     body = response.json()
@@ -95,6 +120,36 @@ def test_api_watchlist_crud(api_client: TestClient) -> None:
     assert add.json()["symbols"] == ["600519"]
     bad = api_client.post("/api/v1/watchlist", json={"symbol": "12"})
     assert bad.status_code == 422
+
+
+@patch("stock_analyzer.interface.api.routes.create_watchlist_auto_service")
+def test_api_watchlist_auto_add(
+    mock_create_service: object,
+    api_client: TestClient,
+) -> None:
+    repo: SqliteQuoteRepository = api_client.app.state.test_repo
+    quotes = _make_quotes("600519", 60)
+
+    async def _factory(store: WatchlistStore, settings: Settings) -> WatchlistAutoService:
+        crawl = CrawlService(_MockQuoteSource(quotes), repo, TokenBucket(rate=100.0, capacity=10))
+        return WatchlistAutoService(
+            watchlist=store,
+            analysis=AnalysisService(repo),
+            predict=PredictService(repo, create_baseline_registry()),
+            crawl=crawl,
+            max_add=5,
+        )
+
+    mock_create_service.side_effect = _factory
+    body = api_client.post(
+        "/api/v1/watchlist/auto-add",
+        json={"symbols": ["600519"], "max_add": 5},
+    ).json()
+    assert "600519" in body["added"]
+    assert body["symbols"] == ["600519"]
+    assert body["ranked"][0]["symbol"] == "600519"
+    assert body["ranked"][0]["score"] > 0
+    assert "600519" in body["fetched"]
 
 
 def test_api_realtime_status(api_client: TestClient) -> None:

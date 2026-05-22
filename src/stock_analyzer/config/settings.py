@@ -42,6 +42,22 @@ class Settings(BaseSettings):
         default="./data/watchlist.json",
         description="自选股列表 JSON 文件路径",
     )
+    watchlist_auto_candidates: str = Field(
+        default="600519,000858,600036,601318,000001,600900,002594,300750",
+        description="自动加自选候选股票，逗号分隔 6 位代码",
+    )
+    watchlist_auto_max_add: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="单次自动添加自选股上限",
+    )
+    watchlist_auto_min_score: float = Field(
+        default=55.0,
+        ge=0.0,
+        le=100.0,
+        description="自动加自选最低综合评分",
+    )
     realtime_interval_seconds: int = Field(
         default=60,
         ge=10,

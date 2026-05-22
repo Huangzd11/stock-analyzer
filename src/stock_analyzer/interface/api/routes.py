@@ -13,6 +13,7 @@ from stock_analyzer.application.crawl_service import CrawlRequest
 from stock_analyzer.application.predict_service import PredictService
 from stock_analyzer.application.realtime_scheduler import RealtimeScheduler
 from stock_analyzer.application.watchlist_store import WatchlistStore
+from stock_analyzer.config.settings import Settings
 from stock_analyzer.domain.analysis import AnalysisResult
 from stock_analyzer.domain.forecast.base import ForecastResult
 from stock_analyzer.infrastructure.persistence.sqlite_repository import SqliteQuoteRepository
@@ -20,6 +21,7 @@ from stock_analyzer.interface.api.schemas import (
     ChartRequestBody,
     CrawlRequestBody,
     RealtimeStartBody,
+    WatchlistAutoAddBody,
     WatchlistSymbol,
     WatchlistUpdate,
 )
@@ -28,11 +30,13 @@ from stock_analyzer.interface.deps import (
     build_repository,
     create_crawl_service,
     create_predict_service,
+    create_watchlist_auto_service,
     get_analysis_service,
     get_predict_service,
     get_settings,
     get_visualize_service,
     init_repository,
+    parse_watchlist_candidates,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -53,6 +57,10 @@ def get_scheduler(request: Request) -> RealtimeScheduler:
 
 def get_watchlist(request: Request) -> WatchlistStore:
     return cast(WatchlistStore, request.app.state.watchlist)
+
+
+def get_app_settings(request: Request) -> Settings:
+    return cast(Settings, request.app.state.settings)
 
 
 async def get_repository() -> SqliteQuoteRepository:
@@ -102,6 +110,43 @@ async def remove_watchlist_symbol(
     store: WatchlistStore = Depends(get_watchlist),
 ) -> dict[str, list[str]]:
     return {"symbols": store.remove_symbol(symbol)}
+
+
+@router.post("/watchlist/auto-add")
+async def auto_add_watchlist(
+    body: WatchlistAutoAddBody,
+    store: WatchlistStore = Depends(get_watchlist),
+    settings: Settings = Depends(get_app_settings),
+) -> dict[str, object]:
+    """按技术/预测综合评分，自动拉取行情并将优质股加入自选股。"""
+    candidates = body.symbols or parse_watchlist_candidates(settings.watchlist_auto_candidates)
+    if not candidates:
+        raise HTTPException(status_code=400, detail="候选股票列表为空")
+    service = await create_watchlist_auto_service(store, settings)
+    result = await service.auto_add(
+        candidates,
+        strategy=body.strategy,
+        max_add=body.max_add,
+        min_score=body.min_score,
+    )
+    return {
+        "symbols": store.list_symbols(),
+        "added": result.added,
+        "skipped_existing": result.skipped_existing,
+        "skipped_no_data": result.skipped_no_data,
+        "skipped_low_score": result.skipped_low_score,
+        "fetched": result.fetched,
+        "ranked": [
+            {
+                "symbol": r.symbol,
+                "score": r.score,
+                "trend": r.trend.value,
+                "passed": r.passed,
+                "reasons": r.reasons,
+            }
+            for r in result.ranked
+        ],
+    }
 
 
 @router.post("/crawl")

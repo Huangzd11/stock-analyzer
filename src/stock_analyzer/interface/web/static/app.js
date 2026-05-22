@@ -189,6 +189,39 @@ document.getElementById("symbol-input")?.addEventListener("keydown", (e) => {
   if (e.key === "Enter") document.getElementById("btn-add-symbol").click();
 });
 
+document.getElementById("btn-auto-add")?.addEventListener("click", async () => {
+  const btn = document.getElementById("btn-auto-add");
+  if (btn?.disabled) return;
+  const prevText = btn?.textContent;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "拉取中…";
+  }
+  toast("正在拉取候选股行情并筛选优质股…");
+  try {
+    const body = await api("/watchlist/auto-add", {
+      method: "POST",
+      body: JSON.stringify({ max_add: 5 }),
+    });
+    await loadWatchlist();
+    const added = body.added || [];
+    if (added.length) {
+      activeSymbol = added[0];
+      document.getElementById("global-symbol").value = activeSymbol;
+      toast(`已智能添加 ${added.length} 只：${added.join("、")}`);
+    } else {
+      toast("未能添加股票（请检查网络或候选池配置）", true);
+    }
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = prevText || "智能添加";
+    }
+  }
+});
+
 // —— 策略 ——
 async function loadStrategies() {
   const data = await api("/strategies");
